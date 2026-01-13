@@ -1,0 +1,22 @@
+services:
+  repo-model:
+    build:
+      context: .
+      dockerfile: Dockerfile.model
+    container_name: repo-model
+    expose:
+      - "8233"
+    ports:
+      - "8233:8233"
+
+  repoguard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: repoguard
+    depends_on:
+      - repo-model
+    ports:
+      - "8344:8000"
+    environment:
+      COMPARE_SERVICE_URL: http://repo-model:8233
