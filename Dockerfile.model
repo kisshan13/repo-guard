@@ -1,0 +1,34 @@
+FROM python:3.13.6-slim
+
+WORKDIR /app
+
+# System deps (minimal)
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first (better layer caching)
+COPY python-service/requirements.txt .
+
+# Upgrade pip and install CPU-only torch + deps
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+      --extra-index-url https://download.pytorch.org/whl/cpu \
+      -r requirements.txt
+
+# Pre-download the sentence-transformers model (optional but recommended)
+RUN python - <<EOF
+from sentence_transformers import SentenceTransformer
+SentenceTransformer("paraphrase-MiniLM-L6-v2")
+EOF
+
+# Copy application code
+COPY python-service/duplicacy_checker.py .
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8233
+
+EXPOSE 8233
+
+# Run with gunicorn (DO NOT use multiple workers)
+CMD ["gunicorn", "duplicacy_checker:app", "--workers", "1", "--threads", "1", "--bind", "0.0.0.0:8233"]
