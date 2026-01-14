@@ -79,6 +79,7 @@ func validateIssue(githubClient *github.Client, repo models.Repository, currentI
 }
 
 func compareIssues(issueOne *models.Issue, issueTwo *models.Issue, isDuplicate chan int) {
+	fmt.Println("Will be now comparing the issues")
 	payload := fmt.Sprintf(`{"issue1_title": "%v", "issue1_body": "", "issue2_title": "%v", "issue2_body": "" }`, issueOne.Title, issueTwo.Title)
 	jsonBody := []byte(payload)
 
@@ -97,11 +98,13 @@ func compareIssues(issueOne *models.Issue, issueTwo *models.Issue, isDuplicate c
 	}
 
 	body, err := io.ReadAll(res.Body)
+	fmt.Println("The response from API is", string(body))
 	defer res.Body.Close()
 	if err != nil {
 		fmt.Println("Cannot read response body", err)
 		isDuplicate <- -1
 	}
+	fmt.Println(response)
 
 	err = json.Unmarshal(body, &response)
 	if err != nil {
