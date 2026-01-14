@@ -4,61 +4,68 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:   
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository (for metadata only)
+        uses: actions/checkout@v3
 
-      - name: Setup SSH Agent for VM
+      - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.VM_SSH_KEY }}
 
-      - name: Add VM host key
+      - name: Add VM to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan ${{ secrets.VM_IP_ADDR }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VM_IP_ADDR }} >> ~/.ssh/known_hosts
 
-      - name: Deploy Docker Compose Services
+      - name: Deploy to VM
         env:
           HOST: ${{ secrets.VM_IP_ADDR }}
           USER: ${{ secrets.VM_USERNAME }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
           APP_ENV: ${{ secrets.APP_ENV }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          ssh $USER@$HOST << 'EOF'
+          ssh $USER@$HOST << EOF
             set -e
 
-            echo "🛑 Stopping running containers..."
-            if [ -d "$DEPLOY_DIR" ]; then
-              cd $DEPLOY_DIR
-              docker compose down --remove-orphans
+            echo "📦 Deploying tag: $TAG_NAME"
+
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "⬇️ Cloning repository..."
+              git clone https://github.com/kailashchoudhary11/repo-guard.git "$DEPLOY_DIR"
             fi
 
-            echo "🧹 Removing unused images (safe cleanup)..."
-            docker image prune -f
+            cd "$DEPLOY_DIR"
 
-            echo "📦 Updating source code..."
-            rm -rf $DEPLOY_DIR
-            git clone --single-branch --branch main \
-              https://github.com/kailashchoudhary11/repo-guard.git $DEPLOY_DIR
+            echo "🔄 Fetching latest refs..."
+            git fetch --all --tags
 
-            cd $DEPLOY_DIR
+            echo "🏷️ Checking out tag $TAG_NAME"
+            git checkout -f "$TAG_NAME"
+
+            echo "🛑 Stopping running containers..."
+            docker compose down --remove-orphans || true
 
             echo "📝 Writing .env file..."
             cat << 'ENVEOF' > .env
             $APP_ENV
             ENVEOF
 
-            echo "🐳 Building with cache..."
+            echo "🐳 Building containers..."
             docker compose build
 
             echo "🚀 Starting services..."
             docker compose up -d
 
-            echo "✅ Deployment finished successfully"
+            echo "🧹 Cleaning unused images..."
+            docker image prune -f
+
+            echo "✅ Deployment successful for tag $TAG_NAME"
           EOF
