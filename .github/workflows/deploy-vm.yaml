@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup SSH Agent for VM
+      - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.VM_SSH_KEY }}
@@ -24,35 +24,39 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan ${{ secrets.VM_IP_ADDR }} >> ~/.ssh/known_hosts
 
-      - name: Deploy Docker Compose Services
+      - name: Deploy to VM
         env:
           HOST: ${{ secrets.VM_IP_ADDR }}
           USER: ${{ secrets.VM_USERNAME }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
-          APP_ENV: ${{ secrets.APP_ENV }}
+          APP_ENV: ${{ secrets.APP_ENV }}   # base64-encoded .env
         run: |
-          ssh $USER@$HOST << EOF
+          ssh "$USER@$HOST" << EOF
             set -euo pipefail
 
-            echo "🛑 Stopping running containers..."
-            if [ -d "$DEPLOY_DIR" ]; then
-              cd "$DEPLOY_DIR"
-              docker compose down --remove-orphans
-            fi
-
-            echo "🧹 Cleaning unused images..."
-            docker image prune -f
-
-            echo "📦 Fetching latest source code..."
-            rm -rf "$DEPLOY_DIR"
-            git clone --single-branch --branch main \
-              https://github.com/kailashchoudhary11/repo-guard.git "$DEPLOY_DIR"
-
+            echo "📁 Preparing deploy directory..."
+            mkdir -p "$DEPLOY_DIR"
             cd "$DEPLOY_DIR"
 
-            echo "📝 Decoding .env file..."
+            echo "📝 Writing .env file..."
             echo "$APP_ENV" | base64 --decode > .env
             chmod 600 .env
+
+            echo "🛑 Stopping running containers (if any)..."
+            docker compose down --remove-orphans || true
+
+            echo "🧹 Cleaning unused Docker images..."
+            docker image prune -f || true
+
+            if [ ! -d ".git" ]; then
+              echo "📦 Cloning repository..."
+              git clone --single-branch --branch main \
+                https://github.com/kailashchoudhary11/repo-guard.git .
+            else
+              echo "🔄 Updating repository..."
+              git fetch origin main
+              git reset --hard origin/main
+            fi
 
             echo "🔍 Validating Docker Compose config..."
             docker compose config > /dev/null
