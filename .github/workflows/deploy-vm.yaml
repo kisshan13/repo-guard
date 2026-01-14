@@ -55,8 +55,8 @@ jobs:
 
             echo "📝 Writing .env file..."
             cat << 'ENVEOF' > .env
-            $APP_ENV
-            ENVEOF
+                $APP_ENV
+                ENVEOF
 
             echo "🐳 Building containers..."
             docker compose build
