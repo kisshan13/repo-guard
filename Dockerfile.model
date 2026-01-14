@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Pre-download the sentence-transformers model (optional but recommended)
 RUN python - <<EOF
 from sentence_transformers import SentenceTransformer
-SentenceTransformer("paraphrase-MiniLM-L6-v2")
+SentenceTransformer("BAAI/bge-m3", device="cpu")
 EOF
 
 # Copy application code
