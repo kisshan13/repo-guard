@@ -26,6 +26,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy binary
 COPY --from=builder /app/app /app/app
+COPY --from=builder /app/.env /app/.env
 
 EXPOSE 8000
 

@@ -1,0 +1,71 @@
+name: Deploy Repo Guard to VM
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_KEY }}
+
+      - name: Add VM host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan ${{ secrets.VM_IP_ADDR }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VM
+        env:
+          HOST: ${{ secrets.VM_IP_ADDR }}
+          USER: ${{ secrets.VM_USERNAME }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          APP_ENV: ${{ secrets.APP_ENV }}   # base64-encoded .env
+        run: |
+          ssh "$USER@$HOST" << EOF
+            set -euo pipefail
+
+            echo "📁 Preparing deploy directory..."
+            mkdir -p "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
+
+            echo "📝 Writing .env file..."
+            echo "$APP_ENV" | base64 --decode > .env
+            chmod 600 .env
+
+            echo "🛑 Stopping running containers (if any)..."
+            docker compose down --remove-orphans || true
+
+            echo "🧹 Cleaning unused Docker images..."
+            docker image prune -f || true
+
+            if [ ! -d ".git" ]; then
+              echo "📦 Cloning repository..."
+              git clone --single-branch --branch main \
+                https://github.com/kailashchoudhary11/repo-guard.git .
+            else
+              echo "🔄 Updating repository..."
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            echo "🔍 Validating Docker Compose config..."
+            docker compose config > /dev/null
+
+            echo "🐳 Building containers..."
+            docker compose build
+
+            echo "🚀 Starting services..."
+            docker compose up -d
+
+            echo "✅ Deployment finished successfully"
+          EOF
